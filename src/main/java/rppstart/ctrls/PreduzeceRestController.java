@@ -1,8 +1,9 @@
 package rppstart.ctrls;
 
-import java.util.Collection;
+import java.net.URI;
+import java.util.List;
+import java.util.Optional;
 
-import javax.transaction.Transactional;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -17,8 +18,9 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import io.swagger.annotations.ApiOperation;
 import rppstart.jpa.Preduzece;
-import rppstart.repository.PreduzeceRepository;
+import rppstart.service.PreduzeceService;
 //uvek automatski treba importovati a ne kopirati
 
 
@@ -31,70 +33,74 @@ public class PreduzeceRestController {
 	//sta su zavisnosti klase? -- varijable i metode neke klase i u ovom slucaju nama trebaju sve metode ovog interfejsa PreduzeceRepository koje je nasledio sve od JpaRepository
 	//zato moramo da injektujemo PreduduzeceREpository u ovu klasu -- Autowired --injektovanje pomocu polja/property-a
 	
-	@Autowired //prilikom pokretanja projkta iz svih bean-ova koji se kreiraju na nivou app -- Nama ce trebati preduzece repository bean
-	private PreduzeceRepository preduzeceRepository; //jedno polje/property
-	
-	@Autowired
-	private JdbcTemplate jdbcTemplate; //kroz jdbc mozemo raditi direktno izvrsavanje sql upita //npr kad neko obrise id 100 da se automatski vrati nazad
-	
-	@GetMapping("preduzece") //ovo je za url localhost/preduzece
-	public Collection<Preduzece> getPreduzeca() { 			//VRACA SVE
-		return preduzeceRepository.findAll();	
-	}
-	
-	@GetMapping("preduzece/{id}") //mapiranje do id-a 
-	public Preduzece getPreduzece(@PathVariable("id") Integer id) { //VRACA PREKO ID-A
-								//ovo je parametar i sama pronalazi sta je na ID-u
-		return preduzeceRepository.getOne(id);
-	}
-	
-	@GetMapping("preduzeceNaziv/{naziv}")
-	public Collection<Preduzece> getPreduzecelByNaziv(@PathVariable("naziv") String naziv) {  //VRACA PREKO NAZIVA
-		return preduzeceRepository.findByNazivContainingIgnoreCase(naziv);
-	}
-	
-	@PostMapping("preduzece") //-- kad pustimo POST zahtev na zadatoj putanji (preduzece) metoda insert preduzece bice pozvana i izvrsice metodu
-	//dobra praksa je da se vrati klijentu neki odgovor bez obzira sto je set metoda -- zato treba odrediti povratnu vrednost Response
-	public ResponseEntity<Preduzece> insertPreduzece(@RequestBody Preduzece preduzece) {
-	//responseEntity vraca http status kod -- poruku
-		if(!preduzeceRepository.existsById(preduzece.getId())) //proveravamo da li preduzece sa prosledjenim IDem vec postoji 
-		{
-			preduzeceRepository.save(preduzece);
-			return new ResponseEntity<Preduzece>(HttpStatus.OK);
-		}
-		return new ResponseEntity<Preduzece>(HttpStatus.CONFLICT); //zasto mi prilikom inserta negativnog ID-a konvertuje u prvi sledeci???????
-		
-	}
-	
-	@PutMapping("preduzece")
-	public ResponseEntity<Preduzece> updatePreduzece(@RequestBody Preduzece preduzece) {
-		if(!preduzeceRepository.existsById(preduzece.getId())) 
-		{
-			return new ResponseEntity<Preduzece>(HttpStatus.NO_CONTENT); 
-		}
-		preduzeceRepository.save(preduzece);
-		return new ResponseEntity<Preduzece>(HttpStatus.OK);
-	}
-	
-	@Transactional //ovo govori ili ce izvrsiti sve ili nista -- odnosi se na ovo kaskadno brisanje
-	@DeleteMapping("preduzece/{id}")
-	public ResponseEntity<Preduzece> deletePreduzece(@PathVariable("id") Integer id) {
-		if(!preduzeceRepository.existsById(id)) 
-		{
-			return new ResponseEntity<Preduzece>(HttpStatus.NO_CONTENT); 
-		}
-		jdbcTemplate.execute("delete from sektor where preduzece = " + id);
-		
-		preduzeceRepository.deleteById(id);
-		
-		if(id == -100)
-		{
-			jdbcTemplate.execute(
+
+    @Autowired
+    private PreduzeceService preduzeceService;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @ApiOperation(value = "Returns List of all Preduzeces")
+    @GetMapping("preduzece")
+    public ResponseEntity<List<Preduzece>> getAll() {
+        List<Preduzece> preduzeces = preduzeceService.getAll();
+        return new ResponseEntity<>(preduzeces, HttpStatus.OK);
+    }
+
+    @ApiOperation(value = "Returns Preduzece with id that was forwarded as path variable.")
+    @GetMapping("preduzece/{id}")
+    public ResponseEntity<Preduzece> getOne(@PathVariable("id") Integer id) {
+        if (preduzeceService.findById(id).isPresent()) {
+            Optional<Preduzece> preduzeceOpt = preduzeceService.findById(id);
+            return new ResponseEntity<>(preduzeceOpt.get(), HttpStatus.OK);
+        } else {
+            return new ResponseEntity<>(null, HttpStatus.NOT_FOUND);
+        }
+    }
+
+    @ApiOperation(value = "Returns list of Preduzeces containing string that was forwarded as path variable in 'naziv'.")
+    @GetMapping("preduzece/naziv/{naziv}")
+    public ResponseEntity<List<Preduzece>> getByNaziv(@PathVariable("naziv") String naziv) {
+        List<Preduzece> preduzeces = preduzeceService.findByNazivContainingIgnoreCase(naziv);
+        return new ResponseEntity<>(preduzeces, HttpStatus.OK);
+    }
+
+    @ApiOperation(value = "Adds new Preduzece to database.")
+    @PostMapping("preduzece")
+    public ResponseEntity<Preduzece> addPreduzece(@RequestBody Preduzece preduzece) {
+        Preduzece savedPreduzece = preduzeceService.save(preduzece);
+        URI location = URI.create("/preduzece/" + savedPreduzece.getId());
+        return ResponseEntity.created(location).body(savedPreduzece);
+    }
+
+    @ApiOperation(value = "Updates Preduzece that has id that was forwarded as path variable with values forwarded in Request Body.")
+    @PutMapping(value = "preduzece/{id}")
+    public ResponseEntity<Preduzece> updatePreduzece(@RequestBody Preduzece preduzece, @PathVariable("id") Integer id) {
+        if (preduzeceService.existsById(id)) {
+            preduzece.setId(id);
+            Preduzece savedPreduzece = preduzeceService.save(preduzece);
+            return ResponseEntity.ok().body(savedPreduzece);
+        }
+        return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
+
+    @ApiOperation(value = "Deletes Preduzece with id that was forwarded as path variable.")
+    @DeleteMapping("preduzece/{id}")
+    public ResponseEntity<HttpStatus> delete(@PathVariable Integer id) {
+
+        if (id == -100 && !preduzeceService.existsById(id)) {
+        	jdbcTemplate.execute(
 					"INSERT INTO \"preduzece\"(\"id\", \"naziv\", \"pib\", \"sediste\")"
 					+ "VALUES (-100, 'testn', 22222, 'tests')" 
 					);
 			
 		}
-		return new ResponseEntity<Preduzece>(HttpStatus.OK);
-	}
+
+        if (preduzeceService.existsById(id)) {
+            preduzeceService.deleteById(id);
+            return new ResponseEntity<HttpStatus>(HttpStatus.OK);
+        }
+        return new ResponseEntity<HttpStatus>(HttpStatus.NOT_FOUND);
+    }
+
 }

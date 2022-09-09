@@ -1,6 +1,6 @@
  package rppstart.repository;
 
-import java.util.Collection;
+import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -13,6 +13,6 @@ public interface PreduzeceRepository extends JpaRepository<Preduzece, Integer>{
 	//mozemo da koristimo predefinisane metode
 	
 	//apstraktna metoda -- ne treba public apstract jer su sve metode apstraktne
-	Collection<Preduzece> findByNazivContainingIgnoreCase(String naziv);
+	List<Preduzece> findByNazivContainingIgnoreCase(String naziv);
 					//get metoda - Naziv obelezja - Zanemari mala i velika slova
 }
